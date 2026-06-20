@@ -1,0 +1,672 @@
+openapi: 3.0.3
+
+info:
+  title: Groups Control API
+  description: |
+    REST-API сервис управления иерархическими группами людей.
+
+    Группы образуют дерево (у группы могут быть дочерние группы), люди привязаны
+    к группам. Сервис умеет считать участников как непосредственно в группе
+    (`direct_count`), так и рекурсивно вместе с дочерними (`total_count`), а также
+    выводить списки людей по тем же двум режимам.
+  version: 1.0.0
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+
+tags:
+  - name: groups
+    description: Управление группами
+  - name: people
+    description: Управление людьми
+  - name: health
+    description: Проверки состояния сервиса
+
+paths:
+  /healthz:
+    get:
+      tags: [health]
+      summary: Liveness probe
+      description: Проверка того, что процесс жив.
+      operationId: getHealthz
+      responses:
+        '200':
+          description: Сервис жив
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+
+  /readyz:
+    get:
+      tags: [health]
+      summary: Readiness probe
+      description: Проверка готовности обслуживать запросы (в т.ч. доступность БД).
+      operationId: getReadyz
+      responses:
+        '200':
+          description: Сервис готов
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+        '503':
+          description: Сервис не готов (например, недоступна БД)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /groups:
+    post:
+      tags: [groups]
+      summary: Создать группу
+      operationId: createGroup
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateGroupRequest'
+      responses:
+        '201':
+          description: Группа создана
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Group'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    get:
+      tags: [groups]
+      summary: Список групп с подсчётом участников
+      description: |
+        Возвращает страницу групп вместе с количеством участников:
+        `direct_count` — людей непосредственно в группе, `total_count` —
+        с учётом всех дочерних групп.
+      operationId: listGroups
+      parameters:
+        - $ref: '#/components/parameters/LimitParam'
+        - $ref: '#/components/parameters/OffsetParam'
+        - name: parent_id
+          in: query
+          required: false
+          description: |
+            Фильтр по родительской группе. Передайте `null`, чтобы получить
+            только корневые группы (без родителя).
+          schema:
+            type: string
+            format: uuid
+            nullable: true
+      responses:
+        '200':
+          description: Страница групп
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /groups/{id}:
+    parameters:
+      - $ref: '#/components/parameters/GroupIdParam'
+    get:
+      tags: [groups]
+      summary: Получить группу по идентификатору
+      operationId: getGroup
+      responses:
+        '200':
+          description: Группа
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupWithCounts'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    put:
+      tags: [groups]
+      summary: Обновить группу
+      description: Изменить имя и/или родителя группы. Запрещены циклы в дереве.
+      operationId: updateGroup
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateGroupRequest'
+      responses:
+        '200':
+          description: Группа обновлена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Group'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    delete:
+      tags: [groups]
+      summary: Удалить группу
+      description: |
+        Удаляет группу. Если у группы есть дочерние группы или привязанные
+        люди — возвращается `409 Conflict`.
+      operationId: deleteGroup
+      responses:
+        '204':
+          description: Группа удалена
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /groups/{id}/people:
+    parameters:
+      - $ref: '#/components/parameters/GroupIdParam'
+    get:
+      tags: [groups]
+      summary: Список людей группы
+      description: |
+        Возвращает людей группы. При `include_descendants=true` включаются также
+        люди из всех дочерних групп (рекурсивно).
+      operationId: listGroupPeople
+      parameters:
+        - name: include_descendants
+          in: query
+          required: false
+          description: Включать людей из дочерних групп.
+          schema:
+            type: boolean
+            default: false
+        - $ref: '#/components/parameters/LimitParam'
+        - $ref: '#/components/parameters/OffsetParam'
+      responses:
+        '200':
+          description: Страница людей
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PersonList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /people:
+    post:
+      tags: [people]
+      summary: Создать человека
+      description: Создаёт человека и привязывает к существующей группе.
+      operationId: createPerson
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePersonRequest'
+      responses:
+        '201':
+          description: Человек создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Person'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /people/{id}:
+    parameters:
+      - $ref: '#/components/parameters/PersonIdParam'
+    get:
+      tags: [people]
+      summary: Получить человека по идентификатору
+      operationId: getPerson
+      responses:
+        '200':
+          description: Человек
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Person'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    put:
+      tags: [people]
+      summary: Обновить человека
+      description: Изменить данные человека, в том числе сменить группу.
+      operationId: updatePerson
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePersonRequest'
+      responses:
+        '200':
+          description: Человек обновлён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Person'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    delete:
+      tags: [people]
+      summary: Удалить человека
+      operationId: deletePerson
+      responses:
+        '204':
+          description: Человек удалён
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+components:
+  parameters:
+    GroupIdParam:
+      name: id
+      in: path
+      required: true
+      description: Идентификатор группы.
+      schema:
+        type: string
+        format: uuid
+
+    PersonIdParam:
+      name: id
+      in: path
+      required: true
+      description: Идентификатор человека.
+      schema:
+        type: string
+        format: uuid
+
+    LimitParam:
+      name: limit
+      in: query
+      required: false
+      description: Максимальное число элементов на странице.
+      schema:
+        type: integer
+        format: int32
+        minimum: 1
+        maximum: 100
+        default: 20
+
+    OffsetParam:
+      name: offset
+      in: query
+      required: false
+      description: Смещение от начала выборки.
+      schema:
+        type: integer
+        format: int32
+        minimum: 0
+        default: 0
+
+  responses:
+    BadRequest:
+      description: Некорректный запрос (невалидный синтаксис, параметры).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Ресурс не найден.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Conflict:
+      description: Конфликт состояния (например, удаление непустой группы или цикл).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    UnprocessableEntity:
+      description: Семантически невалидные данные (нарушение бизнес-правил).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    InternalError:
+      description: Внутренняя ошибка сервера.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+  schemas:
+    Group:
+      type: object
+      description: Группа в дереве групп.
+      required:
+        - id
+        - name
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        parent_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Родительская группа; `null` для корневой.
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+          example: Engineering
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+
+    GroupWithCounts:
+      description: Группа вместе с подсчётом участников.
+      allOf:
+        - $ref: '#/components/schemas/Group'
+        - type: object
+          required:
+            - direct_count
+            - total_count
+          properties:
+            direct_count:
+              type: integer
+              format: int64
+              minimum: 0
+              description: Число людей непосредственно в этой группе.
+              example: 3
+            total_count:
+              type: integer
+              format: int64
+              minimum: 0
+              description: Число людей в группе и во всех дочерних группах.
+              example: 12
+
+    GroupList:
+      type: object
+      required:
+        - items
+        - pagination
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/GroupWithCounts'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    Person:
+      type: object
+      description: Человек, привязанный к группе.
+      required:
+        - id
+        - first_name
+        - last_name
+        - birth_year
+        - group_id
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        first_name:
+          type: string
+          minLength: 1
+          maxLength: 255
+          example: Ada
+        last_name:
+          type: string
+          minLength: 1
+          maxLength: 255
+          example: Lovelace
+        birth_year:
+          type: integer
+          format: int32
+          minimum: 1900
+          maximum: 2100
+          example: 1990
+        group_id:
+          type: string
+          format: uuid
+          description: Группа, к которой привязан человек.
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+
+    PersonList:
+      type: object
+      required:
+        - items
+        - pagination
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Person'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    CreateGroupRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+          example: Engineering
+        parent_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Родительская группа; опустить или `null` для корневой.
+
+    UpdateGroupRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+          example: Platform Engineering
+        parent_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: |
+            Новый родитель; `null` делает группу корневой. Группу нельзя сделать
+            потомком собственного поддерева.
+
+    CreatePersonRequest:
+      type: object
+      required:
+        - first_name
+        - last_name
+        - birth_year
+        - group_id
+      properties:
+        first_name:
+          type: string
+          minLength: 1
+          maxLength: 255
+          example: Ada
+        last_name:
+          type: string
+          minLength: 1
+          maxLength: 255
+          example: Lovelace
+        birth_year:
+          type: integer
+          format: int32
+          minimum: 1900
+          maximum: 2100
+          example: 1990
+        group_id:
+          type: string
+          format: uuid
+          description: Существующая группа, к которой привязывается человек.
+
+    UpdatePersonRequest:
+      type: object
+      required:
+        - first_name
+        - last_name
+        - birth_year
+        - group_id
+      properties:
+        first_name:
+          type: string
+          minLength: 1
+          maxLength: 255
+          example: Ada
+        last_name:
+          type: string
+          minLength: 1
+          maxLength: 255
+          example: Byron
+        birth_year:
+          type: integer
+          format: int32
+          minimum: 1900
+          maximum: 2100
+          example: 1990
+        group_id:
+          type: string
+          format: uuid
+          description: Группа, к которой привязан человек (можно сменить).
+
+    Pagination:
+      type: object
+      required:
+        - limit
+        - offset
+        - total
+      properties:
+        limit:
+          type: integer
+          format: int32
+          minimum: 1
+          example: 20
+        offset:
+          type: integer
+          format: int32
+          minimum: 0
+          example: 0
+        total:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Общее число элементов, удовлетворяющих запросу.
+          example: 42
+
+    HealthStatus:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          example: ok
+
+    Error:
+      type: object
+      description: Единый формат тела ошибки.
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+          description: Машиночитаемый код ошибки.
+          enum:
+            - bad_request
+            - not_found
+            - conflict
+            - validation_error
+            - internal_error
+          example: not_found
+        message:
+          type: string
+          description: Человекочитаемое описание ошибки.
+          example: group not found
+        details:
+          type: array
+          description: Детали ошибок валидации по отдельным полям.
+          items:
+            $ref: '#/components/schemas/ErrorDetail'
+
+    ErrorDetail:
+      type: object
+      required:
+        - field
+        - message
+      properties:
+        field:
+          type: string
+          example: birth_year
+        message:
+          type: string
+          example: must be between 1900 and 2100
