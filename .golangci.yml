@@ -1,0 +1,39 @@
+# golangci-lint configuration
+# Docs: https://golangci-lint.run/usage/configuration/
+
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  disable-all: true
+  enable:
+    - errcheck      # unchecked errors
+    - govet         # suspicious constructs
+    - ineffassign   # ineffectual assignments
+    - staticcheck   # static analysis suite
+    - unused        # unused code
+    - gofmt         # formatting
+    - goimports     # import grouping/formatting
+    - revive        # style/lint rules
+    - gosec         # security issues
+    - misspell      # misspellings
+    - unconvert     # unnecessary conversions
+    - bodyclose     # unclosed HTTP response bodies
+    - errorlint     # error wrapping correctness
+
+issues:
+  exclude-rules:
+    # Relax some rules in tests.
+    - path: _test\.go
+      linters:
+        - gosec
+        - errcheck
+
+linters-settings:
+  goimports:
+    local-prefixes: groups-control
+  revive:
+    rules:
+      - name: exported
+        disabled: false
