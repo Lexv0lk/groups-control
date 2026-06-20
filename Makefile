@@ -11,7 +11,7 @@ MIGRATIONS_DIR ?= migrations
 COMPOSE_FILE   ?= deployments/docker-compose.yml
 
 # Tools
-OAPI_CODEGEN   ?= go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen
+OAPI_CODEGEN   ?= go tool oapi-codegen
 MIGRATE        ?= go run -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate
 GOLANGCI_LINT  ?= go run github.com/golangci/golangci-lint/cmd/golangci-lint
 

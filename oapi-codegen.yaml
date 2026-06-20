@@ -1,0 +1,12 @@
+# Configuration for oapi-codegen.
+# Generates type-safe DTOs and a strict chi-based server interface from the
+# OpenAPI contract (api/openapi.yaml) into package `gen`.
+package: gen
+output: internal/adapters/http/gen/api.gen.go
+generate:
+  models: true
+  chi-server: true
+  strict-server: true
+  embedded-spec: true
+output-options:
+  skip-prune: false
