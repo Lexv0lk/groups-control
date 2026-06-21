@@ -26,6 +26,8 @@ type HTTP struct {
 	WriteTimeout time.Duration `env:"HTTP_WRITE_TIMEOUT" envDefault:"10s"`
 	// IdleTimeout — таймаут простоя keep-alive соединения.
 	IdleTimeout time.Duration `env:"HTTP_IDLE_TIMEOUT" envDefault:"60s"`
+	// RequestTimeout — таймаут обработки одного запроса (middleware).
+	RequestTimeout time.Duration `env:"HTTP_REQUEST_TIMEOUT" envDefault:"8s"`
 	// ShutdownTimeout — отведённое время на graceful shutdown.
 	ShutdownTimeout time.Duration `env:"HTTP_SHUTDOWN_TIMEOUT" envDefault:"15s"`
 }
