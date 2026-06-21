@@ -1,5 +1,7 @@
 package usecase
 
+//go:generate go tool mockgen -source=ports.go -destination=../../gen/mocks/usecase_ports.gen.go -package=mocks
+
 import (
 	"context"
 
