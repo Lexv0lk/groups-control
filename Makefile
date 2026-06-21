@@ -59,6 +59,14 @@ migrate-create: ## Create a new migration: make migrate-create name=foo
 test: ## Run all tests
 	go test ./... -race -count=1
 
+.PHONY: test-integration
+test-integration: ## Run repository integration tests (requires Docker)
+	go test -tags integration ./internal/adapters/repository/... -count=1
+
+.PHONY: test-e2e
+test-e2e: ## Run end-to-end API tests against the full stack (requires Docker)
+	go test -tags e2e ./test/e2e/... -count=1
+
 .PHONY: lint
 lint: ## Run golangci-lint
 	$(GOLANGCI_LINT) run
