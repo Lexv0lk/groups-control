@@ -121,6 +121,15 @@ func TestGroupTreeCountsAndListings(t *testing.T) {
 		assert.EqualValues(t, 4, list.Pagination.Total, "four groups total")
 		assert.Len(t, list.Items, 4)
 	})
+
+	t.Run("list groups applies contract default limit", func(t *testing.T) {
+		status, data := doRequest(t, http.MethodGet, "/groups", nil)
+		require.Equal(t, http.StatusOK, status, "%s", string(data))
+		list := decode[gen.GroupList](t, data)
+		// Дефолтный limit должен совпадать с OpenAPI-контрактом (20), а не с
+		// внутренним значением реализации.
+		assert.EqualValues(t, 20, list.Pagination.Limit, "default limit from contract")
+	})
 }
 
 // TestPersonLifecycle проверяет жизненный цикл человека через API: создание,
@@ -168,6 +177,21 @@ func TestErrorScenarios(t *testing.T) {
 		status, data := doRequest(t, http.MethodGet, "/groups/"+uuidNew().String(), nil)
 		require.Equal(t, http.StatusNotFound, status)
 		assert.Equal(t, gen.ErrorCodeNotFound, decode[gen.Error](t, data).Code)
+	})
+
+	t.Run("404 on unknown route returns error envelope", func(t *testing.T) {
+		status, data := doRequest(t, http.MethodGet, "/does-not-exist", nil)
+		require.Equal(t, http.StatusNotFound, status, "%s", string(data))
+		assert.Equal(t, gen.ErrorCodeNotFound, decode[gen.Error](t, data).Code)
+	})
+
+	t.Run("405 on unsupported method returns envelope and Allow", func(t *testing.T) {
+		status, header, data := doRequestHeaders(t, http.MethodPatch, "/groups", nil)
+		require.Equal(t, http.StatusMethodNotAllowed, status, "%s", string(data))
+		assert.Equal(t, gen.ErrorCodeBadRequest, decode[gen.Error](t, data).Code)
+		allow := header.Values("Allow")
+		assert.Contains(t, allow, http.MethodGet, "Allow must advertise GET")
+		assert.Contains(t, allow, http.MethodPost, "Allow must advertise POST")
 	})
 
 	t.Run("422 on empty group name", func(t *testing.T) {

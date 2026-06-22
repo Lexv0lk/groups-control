@@ -7,9 +7,19 @@ import (
 
 	"log/slog"
 
+	"github.com/go-chi/chi/v5"
+
 	"groups-control/internal/adapters/http/gen"
 	"groups-control/internal/domain"
 )
+
+// allowProbeMethods — набор методов, по которым восстанавливается заголовок Allow
+// для ответа 405 (chi не передаёт список разрешённых методов в кастомный
+// обработчик).
+var allowProbeMethods = []string{
+	http.MethodGet, http.MethodPost, http.MethodPut,
+	http.MethodPatch, http.MethodDelete, http.MethodHead, http.MethodOptions,
+}
 
 // errEmptyBody — тело запроса обязательно, но не передано.
 var errEmptyBody = errors.New("request body is required")
@@ -79,5 +89,27 @@ func responseErrorHandler(logger *slog.Logger) func(http.ResponseWriter, *http.R
 func requestErrorHandler() func(http.ResponseWriter, *http.Request, error) {
 	return func(w http.ResponseWriter, _ *http.Request, err error) {
 		writeJSON(w, http.StatusBadRequest, errorBody(gen.ErrorCodeBadRequest, "invalid request: "+err.Error(), nil))
+	}
+}
+
+// notFoundHandler отвечает единым телом ошибки на запрос неизвестного маршрута,
+// заменяя текстовый ответ chi по умолчанию.
+func notFoundHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusNotFound, errorBody(gen.ErrorCodeNotFound, "resource not found", nil))
+	}
+}
+
+// methodNotAllowedHandler отвечает единым телом ошибки на неподдерживаемый метод.
+// chi для кастомного обработчика не проставляет заголовок Allow, поэтому список
+// разрешённых методов восстанавливается перебором через router.Match.
+func methodNotAllowedHandler(router chi.Router) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		for _, m := range allowProbeMethods {
+			if router.Match(chi.NewRouteContext(), m, r.URL.Path) {
+				w.Header().Add("Allow", m)
+			}
+		}
+		writeJSON(w, http.StatusMethodNotAllowed, errorBody(gen.ErrorCodeBadRequest, "method not allowed", nil))
 	}
 }

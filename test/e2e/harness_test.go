@@ -154,6 +154,33 @@ func doRequest(t *testing.T, method, path string, body any) (int, []byte) {
 	return resp.StatusCode, data
 }
 
+// doRequestHeaders — как doRequest, но дополнительно возвращает заголовки ответа.
+// Нужен для проверок, завязанных на заголовки (например, Allow в ответе 405).
+func doRequestHeaders(t *testing.T, method, path string, body any) (int, http.Header, []byte) {
+	t.Helper()
+
+	var reader io.Reader
+	if body != nil {
+		raw, err := json.Marshal(body)
+		require.NoError(t, err)
+		reader = bytes.NewReader(raw)
+	}
+
+	req, err := http.NewRequest(method, baseURL+path, reader)
+	require.NoError(t, err)
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+
+	data, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	return resp.StatusCode, resp.Header, data
+}
+
 // decode разбирает JSON-тело ответа в значение типа T, проваливая тест при
 // ошибке десериализации.
 func decode[T any](t *testing.T, data []byte) T {

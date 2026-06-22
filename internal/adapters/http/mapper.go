@@ -7,8 +7,10 @@ import (
 )
 
 // Параметры пагинации списков по умолчанию и их верхняя граница.
+// Значения синхронизированы с OpenAPI-контрактом (LimitParam: default 20,
+// maximum 100).
 const (
-	defaultLimit = 50
+	defaultLimit = 20
 	maxLimit     = 100
 )
 

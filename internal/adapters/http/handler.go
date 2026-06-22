@@ -177,6 +177,11 @@ func NewRouter(h gen.StrictServerInterface, logger *slog.Logger, requestTimeout 
 		r.Use(timeoutMiddleware(requestTimeout))
 	}
 
+	// Единый формат ошибок и для непрописанных в контракте маршрутов/методов:
+	// иначе chi отдаёт текстовый 404 и пустой 405 в обход конверта Error.
+	r.NotFound(notFoundHandler())
+	r.MethodNotAllowed(methodNotAllowedHandler(r))
+
 	return gen.HandlerWithOptions(strict, gen.ChiServerOptions{
 		BaseRouter:       r,
 		ErrorHandlerFunc: requestErrorHandler(),
